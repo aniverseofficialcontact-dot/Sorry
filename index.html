@@ -379,8 +379,8 @@
                 }
             }
 
-            // Keep center phrase changing when complete (after period of inactivity)
-            if (done_t && (tick - done_t) > 150 && (tick - cur_t) > 220) {
+            // Once rotation is completed, center text continuously auto-changes every 2 seconds (125 ticks)
+            if (done_t && (tick - cur_t) >= 125) {
                 let nextChoices = [];
                 for (let k = 0; k < N; k++) {
                     if (k !== cur) nextChoices.push(k);
