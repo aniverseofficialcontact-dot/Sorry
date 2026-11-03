@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>100 Ways to Say Sorry</title>
     <style>
         * {
@@ -10,50 +10,27 @@
             margin: 0;
             padding: 0;
         }
-        body, html {
+        html, body {
             width: 100%;
             height: 100%;
             overflow: hidden;
             background-color: #07091b;
-            display: flex;
-            justify-content: center;
-            align-items: center;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-        }
-        #canvas-container {
-            position: relative;
-            width: 100vmin;
-            height: 100vmin;
-            max-width: 800px;
-            max-height: 800px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
+            touch-action: none;
         }
         canvas {
-            width: 100%;
-            height: 100%;
+            width: 100vw;
+            height: 100vh;
             display: block;
         }
     </style>
 </head>
 <body>
-    <div id="canvas-container">
-        <canvas id="wheelCanvas" width="800" height="800"></canvas>
-    </div>
+    <canvas id="wheelCanvas"></canvas>
 
     <script>
         const canvas = document.getElementById('wheelCanvas');
         const ctx = canvas.getContext('2d');
-
-        // High DPI scaling
-        function setupCanvas() {
-            const dpr = window.devicePixelRatio || 1;
-            const rect = canvas.getBoundingClientRect();
-            canvas.width = rect.width * dpr;
-            canvas.height = rect.height * dpr;
-            ctx.scale(dpr * (rect.width / 800), dpr * (rect.height / 800));
-        }
 
         const TICK_MS = 16;
         const INTERVAL = 9;
@@ -154,18 +131,17 @@
             return mix(STOPS[i], STOPS[i + 1], k - i);
         }
 
-        // Pseudo-random generator for consistent stars
         let seed = 7;
         function random() {
             let x = Math.sin(seed++) * 10000;
             return x - Math.floor(x);
         }
 
-        // Stars setup
+        // Stars setup in logical coords [-600, 600] to cover full screen
         const stars = [];
-        for (let i = 0; i < 90; i++) {
-            let x = (random() * 800) - 400;
-            let y = (random() * 800) - 400;
+        for (let i = 0; i < 160; i++) {
+            let x = (random() * 1200) - 600;
+            let y = (random() * 1200) - 600;
             if (Math.hypot(x, y) < 372) continue;
             let b = 0.15 + random() * 0.35;
             let szChoices = [0.8, 1, 1, 1.4];
@@ -185,12 +161,68 @@
             });
         }
 
+        let width = 0;
+        let height = 0;
+        let dpr = 1;
+
+        function resize() {
+            dpr = window.devicePixelRatio || 1;
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width * dpr;
+            canvas.height = height * dpr;
+        }
+
+        window.addEventListener('resize', resize);
+        resize();
+
         let tick = 0;
         let rot = 0.0;
+        let rotVelocity = 0.0;
         let shown = 0;
         let cur = null;
         let cur_t = 0;
         let done_t = null;
+
+        // Interactive touch/mouse drag support
+        let isDragging = false;
+        let lastAngle = 0;
+
+        function getPointerAngle(e) {
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            const dx = clientX - width / 2;
+            const dy = clientY - height / 2;
+            return Math.atan2(dy, dx);
+        }
+
+        function onPointerDown(e) {
+            isDragging = true;
+            lastAngle = getPointerAngle(e);
+            rotVelocity = 0;
+        }
+
+        function onPointerMove(e) {
+            if (!isDragging) return;
+            const currentAngle = getPointerAngle(e);
+            let delta = currentAngle - lastAngle;
+            if (delta > Math.PI) delta -= Math.PI * 2;
+            if (delta < -Math.PI) delta += Math.PI * 2;
+            rot -= delta; // Rotate wheel with gesture
+            rotVelocity = -delta;
+            lastAngle = currentAngle;
+        }
+
+        function onPointerUp() {
+            isDragging = false;
+        }
+
+        window.addEventListener('mousedown', onPointerDown);
+        window.addEventListener('mousemove', onPointerMove);
+        window.addEventListener('mouseup', onPointerUp);
+        window.addEventListener('touchstart', onPointerDown, { passive: true });
+        window.addEventListener('touchmove', onPointerMove, { passive: true });
+        window.addEventListener('touchend', onPointerUp);
 
         function showCenter(i) {
             cur = i;
@@ -204,8 +236,8 @@
 
             for (let i = 1; i < words.length; i++) {
                 const word = words[i];
-                const width = context.measureText(currentLine + " " + word).width;
-                if (width < maxWidth) {
+                const w = context.measureText(currentLine + " " + word).width;
+                if (w < maxWidth) {
                     currentLine += " " + word;
                 } else {
                     lines.push(currentLine);
@@ -218,7 +250,12 @@
 
         function draw() {
             tick++;
-            rot -= 0.0006 + (shown >= N ? 0.0006 : 0);
+
+            if (!isDragging) {
+                const baseSpeed = 0.0006 + (shown >= N ? 0.0006 : 0);
+                rotVelocity = rotVelocity * 0.95;
+                rot -= (baseSpeed + rotVelocity);
+            }
 
             // Reveal next apology
             if (shown < N && tick % INTERVAL === 0) {
@@ -247,17 +284,23 @@
 
             // --- RENDER ---
             ctx.save();
-            ctx.clearRect(0, 0, 800, 800);
+            ctx.scale(dpr, dpr);
+            ctx.clearRect(0, 0, width, height);
 
-            // Translate center to (400, 400)
-            ctx.translate(400, 400);
-
-            // Background Dusk Gradient
-            const grad = ctx.createLinearGradient(0, -400, 0, 400);
+            // Fullscreen Dusk Gradient Background
+            const grad = ctx.createLinearGradient(0, 0, 0, height);
             grad.addColorStop(0, hx(BG_TOP));
             grad.addColorStop(1, hx(BG_BOT));
             ctx.fillStyle = grad;
-            ctx.fillRect(-400, -400, 800, 800);
+            ctx.fillRect(0, 0, width, height);
+
+            // Translate to center of screen
+            ctx.translate(width / 2, height / 2);
+
+            // Scale wheel dynamically to fit viewport perfectly (Logical canvas = 880x880)
+            const minDim = Math.min(width, height);
+            const scale = minDim / 880;
+            ctx.scale(scale, scale);
 
             // Draw Stars
             for (let s of stars) {
@@ -268,21 +311,18 @@
             }
 
             // Concentric Rings
-            const ring1Color = hx(mix(BG_TOP, GOLD, 0.35));
-            ctx.strokeStyle = ring1Color;
+            ctx.strokeStyle = hx(mix(BG_TOP, GOLD, 0.35));
             ctx.lineWidth = 1;
             ctx.beginPath();
             ctx.arc(0, 0, R0 - 14, 0, Math.PI * 2);
             ctx.stroke();
 
-            const ring2Color = hx(mix(BG_TOP, GOLD, 0.12));
-            ctx.strokeStyle = ring2Color;
+            ctx.strokeStyle = hx(mix(BG_TOP, GOLD, 0.12));
             ctx.beginPath();
             ctx.arc(0, 0, R0 - 19, 0, Math.PI * 2);
             ctx.stroke();
 
-            const outerRingColor = hx(mix(BG_TOP, GOLD, 0.18));
-            ctx.strokeStyle = outerRingColor;
+            ctx.strokeStyle = hx(mix(BG_TOP, GOLD, 0.18));
             ctx.beginPath();
             ctx.arc(0, 0, RING, 0, Math.PI * 2);
             ctx.stroke();
@@ -293,7 +333,6 @@
                 ctx.lineWidth = 2;
                 ctx.beginPath();
                 const extent = (shown / N) * Math.PI * 2;
-                // Turtle starts at 12 o'clock (-Math.PI/2) and goes clockwise (+extent in canvas coords)
                 ctx.arc(0, 0, RING, -Math.PI / 2, -Math.PI / 2 + extent, false);
                 ctx.stroke();
             }
@@ -312,7 +351,6 @@
                 const rr = R0 + slide;
 
                 const a = (p.th + rot) % (Math.PI * 2);
-                // In canvas coords, positive y is down, so:
                 const x = rr * Math.cos(a);
                 const y = -rr * Math.sin(a);
 
@@ -329,8 +367,6 @@
                 ctx.save();
                 ctx.translate(x, y);
 
-                // Determine angle and alignment
-                // Normalized angle in [0, 2pi)
                 let normA = (a % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
 
                 if (normA > Math.PI / 2 && normA < 3 * Math.PI / 2) {
@@ -393,8 +429,6 @@
             requestAnimationFrame(draw);
         }
 
-        window.addEventListener('resize', setupCanvas);
-        setupCanvas();
         requestAnimationFrame(draw);
     </script>
 </body>
