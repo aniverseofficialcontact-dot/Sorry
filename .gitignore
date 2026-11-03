@@ -3,4 +3,5 @@
 build/
 __pycache__/
 *.pyc
+make_og.py
 .DS_Store
