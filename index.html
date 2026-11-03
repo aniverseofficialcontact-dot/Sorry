@@ -2,13 +2,20 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>100 Ways to Say Sorry</title>
     <style>
         * {
             box-sizing: border-box;
             margin: 0;
             padding: 0;
+            -webkit-tap-highlight-color: transparent;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            -khtml-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
         }
         html, body {
             width: 100%;
@@ -17,12 +24,16 @@
             background-color: #07091b;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             touch-action: none;
+            overscroll-behavior: none;
         }
         canvas {
             width: 100vw;
             height: 100vh;
             display: block;
             cursor: default;
+            touch-action: none;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
         }
     </style>
 </head>
@@ -208,6 +219,9 @@
         }
 
         function handlePointerStart(e) {
+            if (e.type === 'touchstart' && e.cancelable) {
+                e.preventDefault();
+            }
             const coords = getPointerCoords(e);
             isDragging = true;
             hasDragged = false;
@@ -218,6 +232,9 @@
         }
 
         function handlePointerMove(e) {
+            if (e.type === 'touchmove' && e.cancelable) {
+                e.preventDefault();
+            }
             const coords = getPointerCoords(e);
 
             // Cursor styling for desktop
@@ -265,7 +282,7 @@
                     let closestIndex = -1;
 
                     for (let i = 0; i < N; i++) {
-                        if (spokes[i].born === null) continue; // select revealed spoke
+                        if (spokes[i].born === null) continue;
                         const spokeA = (spokes[i].th + rot) % (Math.PI * 2);
                         const normSpokeA = (spokeA % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
 
@@ -290,8 +307,8 @@
         window.addEventListener('mousemove', handlePointerMove);
         window.addEventListener('mouseup', handlePointerEnd);
 
-        window.addEventListener('touchstart', handlePointerStart, { passive: true });
-        window.addEventListener('touchmove', handlePointerMove, { passive: true });
+        window.addEventListener('touchstart', handlePointerStart, { passive: false });
+        window.addEventListener('touchmove', handlePointerMove, { passive: false });
         window.addEventListener('touchend', handlePointerEnd);
 
         function showCenter(i) {
@@ -451,7 +468,6 @@
                 ctx.fillStyle = hx(col);
                 ctx.textBaseline = 'middle';
 
-                // Make selected spoke text slightly bold or highlighted
                 if (cur === i) {
                     ctx.font = `bold 9px ${SANS}`;
                 } else {
