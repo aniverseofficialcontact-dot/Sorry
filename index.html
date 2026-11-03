@@ -22,6 +22,7 @@
             width: 100vw;
             height: 100vh;
             display: block;
+            cursor: default;
         }
     </style>
 </head>
@@ -137,7 +138,7 @@
             return x - Math.floor(x);
         }
 
-        // Stars setup in logical coords [-600, 600] to cover full screen
+        // Stars setup
         const stars = [];
         for (let i = 0; i < 160; i++) {
             let x = (random() * 1200) - 600;
@@ -184,45 +185,114 @@
         let cur_t = 0;
         let done_t = null;
 
-        // Interactive touch/mouse drag support
+        // Interactive touch/mouse drag & tap support
         let isDragging = false;
+        let hasDragged = false;
+        let startX = 0;
+        let startY = 0;
         let lastAngle = 0;
 
-        function getPointerAngle(e) {
-            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        function getPointerCoords(e) {
+            if (e.touches && e.touches.length > 0) {
+                return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+            } else if (e.changedTouches && e.changedTouches.length > 0) {
+                return { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY };
+            }
+            return { x: e.clientX, y: e.clientY };
+        }
+
+        function getAngleFromCoords(clientX, clientY) {
             const dx = clientX - width / 2;
             const dy = clientY - height / 2;
             return Math.atan2(dy, dx);
         }
 
-        function onPointerDown(e) {
+        function handlePointerStart(e) {
+            const coords = getPointerCoords(e);
             isDragging = true;
-            lastAngle = getPointerAngle(e);
+            hasDragged = false;
+            startX = coords.x;
+            startY = coords.y;
+            lastAngle = getAngleFromCoords(coords.x, coords.y);
             rotVelocity = 0;
         }
 
-        function onPointerMove(e) {
+        function handlePointerMove(e) {
+            const coords = getPointerCoords(e);
+
+            // Cursor styling for desktop
+            const dx = coords.x - width / 2;
+            const dy = coords.y - height / 2;
+            const scale = Math.min(width, height) / 880;
+            const dist = Math.hypot(dx / scale, dy / scale);
+            if (dist >= R0 - 25 && dist <= RING + 30) {
+                canvas.style.cursor = 'pointer';
+            } else {
+                canvas.style.cursor = 'default';
+            }
+
             if (!isDragging) return;
-            const currentAngle = getPointerAngle(e);
+
+            const distMoved = Math.hypot(coords.x - startX, coords.y - startY);
+            if (distMoved > 7) {
+                hasDragged = true;
+            }
+
+            const currentAngle = getAngleFromCoords(coords.x, coords.y);
             let delta = currentAngle - lastAngle;
             if (delta > Math.PI) delta -= Math.PI * 2;
             if (delta < -Math.PI) delta += Math.PI * 2;
-            rot -= delta; // Rotate wheel with gesture
+            rot -= delta;
             rotVelocity = -delta;
             lastAngle = currentAngle;
         }
 
-        function onPointerUp() {
+        function handlePointerEnd(e) {
+            if (isDragging && !hasDragged) {
+                // TAP / CLICK EVENT: Detect which spoke was clicked
+                const dx = startX - width / 2;
+                const dy = startY - height / 2;
+                const scale = Math.min(width, height) / 880;
+                const lx = dx / scale;
+                const ly = dy / scale;
+                const dist = Math.hypot(lx, ly);
+
+                if (dist >= R0 - 25 && dist <= RING + 35) {
+                    const clickAngle = Math.atan2(-ly, lx);
+                    const normClickAngle = (clickAngle % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+
+                    let minDiff = Infinity;
+                    let closestIndex = -1;
+
+                    for (let i = 0; i < N; i++) {
+                        if (spokes[i].born === null) continue; // select revealed spoke
+                        const spokeA = (spokes[i].th + rot) % (Math.PI * 2);
+                        const normSpokeA = (spokeA % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+
+                        let diff = Math.abs(normSpokeA - normClickAngle);
+                        if (diff > Math.PI) diff = Math.PI * 2 - diff;
+
+                        if (diff < minDiff) {
+                            minDiff = diff;
+                            closestIndex = i;
+                        }
+                    }
+
+                    if (closestIndex !== -1 && minDiff < (Math.PI * 2 / N) * 2.5) {
+                        showCenter(closestIndex);
+                    }
+                }
+            }
             isDragging = false;
         }
 
-        window.addEventListener('mousedown', onPointerDown);
-        window.addEventListener('mousemove', onPointerMove);
-        window.addEventListener('mouseup', onPointerUp);
-        window.addEventListener('touchstart', onPointerDown, { passive: true });
-        window.addEventListener('touchmove', onPointerMove, { passive: true });
-        window.addEventListener('touchend', onPointerUp);
+        window.addEventListener('mousedown', handlePointerStart);
+        window.addEventListener('mousemove', handlePointerMove);
+        window.addEventListener('mouseup', handlePointerEnd);
+
+        window.addEventListener('touchstart', handlePointerStart, { passive: true });
+        window.addEventListener('touchmove', handlePointerMove, { passive: true });
+        window.addEventListener('touchend', handlePointerEnd);
 
         function showCenter(i) {
             cur = i;
@@ -267,8 +337,8 @@
                 }
             }
 
-            // Keep center phrase changing when complete
-            if (done_t && (tick - done_t) > 150 && (tick - cur_t) > 170) {
+            // Keep center phrase changing when complete (after period of inactivity)
+            if (done_t && (tick - done_t) > 150 && (tick - cur_t) > 220) {
                 let nextChoices = [];
                 for (let k = 0; k < N; k++) {
                     if (k !== cur) nextChoices.push(k);
@@ -297,7 +367,7 @@
             // Translate to center of screen
             ctx.translate(width / 2, height / 2);
 
-            // Scale wheel dynamically to fit viewport perfectly (Logical canvas = 880x880)
+            // Scale wheel dynamically to fit viewport perfectly
             const minDim = Math.min(width, height);
             const scale = minDim / 880;
             ctx.scale(scale, scale);
@@ -362,7 +432,8 @@
                 }
 
                 let pop = u < 0.6 ? 0.9 * Math.sin(Math.PI * clamp((u - 0.1) / 0.5)) : 0;
-                const col = mix(mix(BGC, p.color, 0.82 * e), FLASH, Math.max(glow, pop));
+                let selectedGlow = (cur === i) ? 0.9 : 0;
+                const col = mix(mix(BGC, p.color, 0.82 * e), FLASH, Math.max(glow, pop, selectedGlow));
 
                 ctx.save();
                 ctx.translate(x, y);
@@ -379,6 +450,14 @@
 
                 ctx.fillStyle = hx(col);
                 ctx.textBaseline = 'middle';
+
+                // Make selected spoke text slightly bold or highlighted
+                if (cur === i) {
+                    ctx.font = `bold 9px ${SANS}`;
+                } else {
+                    ctx.font = `8px ${SANS}`;
+                }
+
                 ctx.fillText(p.text, 0, 0);
                 ctx.restore();
             }
