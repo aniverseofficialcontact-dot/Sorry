@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: 100-ways-to-say-sorry
+    env: static
+    buildCommand: ""
+    staticPublishPath: .
